@@ -1,7 +1,7 @@
 export CUDA_VISIBLE_DEVICES="0,2,3,4"
 gpus=4
 
-PROJECT_DIR="/data/hanweiguang/Projects/rlhf"
+PROJECT_DIR="/workdir/rlhf"
 export PYTHONPATH="$PROJECT_DIR/rlhf"
 
 export WANDB_PROJECT=test_rm
