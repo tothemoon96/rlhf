@@ -2,7 +2,7 @@ export CUDA_VISIBLE_DEVICES="0,2,3,4"
 gpus=4
 
 PROJECT_DIR="/workspace/rlhf"
-export PYTHONPATH="$PROJECT_DIR/rlhf"
+export PYTHONPATH=$PROJECT_DIR
 
 export WANDB_PROJECT=test_rm
 export WANDB_RUN_ID=test
