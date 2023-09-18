@@ -19,7 +19,7 @@ from transformers import (
     Trainer
 )
 from transformers.utils import PaddingStrategy, add_start_docstrings
-from transformers.trainer_utils import get_last_checkpoint, IntervalStrategy
+from transformers.trainer_utils import IntervalStrategy
 from torch import nn
 
 from trl import RewardConfig
