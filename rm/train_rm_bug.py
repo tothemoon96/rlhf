@@ -7,13 +7,11 @@ import sys
 from typing import Any, Dict, List, Optional, Union
 
 from datasets import load_dataset
-from peft import LoraConfig, get_peft_model
 from tqdm import tqdm
 import transformers
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
-    BitsAndBytesConfig,
     HfArgumentParser,
     PreTrainedTokenizerBase,
     TrainingArguments,
@@ -145,12 +143,6 @@ class TrainingArguments(RewardConfig):
             )
         },
     )
-    resume_from_checkpoint: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "The path to a folder with a valid checkpoint for your model."
-        },
-    )
     logging_steps: Optional[int] = field(
         default=1, metadata={"help": "the number of update steps between two logs"}
     )
@@ -168,23 +160,10 @@ class ScriptArguments:
     """
     Hyperparameters to fine-tune a reward model on a given dataset with the `RewardTrainer`.
     """
-
     model_name: str = field(default=None, metadata={"help": "the model name"})
     train_data: str = field(default=None, metadata={"help": "train data path"})
     eval_data: str = field(default=None, metadata={"help": "eval data path"})
     cache_dir: str = field(default="hf_cache_dir", metadata={"help": "cache dir"})
-    load_in_8bit: Optional[bool] = field(
-        default=False, metadata={"help": "load the model in 8 bits precision"}
-    )
-    load_in_4bit: Optional[bool] = field(
-        default=False, metadata={"help": "load the model in 4 bits precision"}
-    )
-    use_peft: Optional[bool] = field(
-        default=False, metadata={"help": "Wether to use PEFT or not to train adapters"}
-    )
-    trust_remote_code: Optional[bool] = field(
-        default=True, metadata={"help": "Enable `trust_remote_code`"}
-    )
     use_llama: Optional[bool] = field(default=True, metadata={"help": "bfloat16"})
 
 
@@ -280,7 +259,6 @@ def main():
     parser = HfArgumentParser((TrainingArguments, ScriptArguments))
     training_args, script_args = parser.parse_args_into_dataclasses()
     log_file = os.path.join(training_args.output_dir, "print_log.txt")
-    local_rank = training_args.distributed_state.local_process_index
     rank = training_args.distributed_state.process_index
 
     # Setup logging
@@ -392,42 +370,12 @@ def main():
     training_args.eval_steps = eval_steps
     training_args.save_steps = eval_steps
 
-    # Load the model
-    if script_args.load_in_8bit and script_args.load_in_4bit:
-        raise ValueError(
-            "You can't load the model in 8 bits and 4 bits at the same time"
-        )
-    elif script_args.load_in_8bit or script_args.load_in_4bit:
-        quantization_config = BitsAndBytesConfig(
-            load_in_8bit=script_args.load_in_8bit, load_in_4bit=script_args.load_in_4bit
-        )
-        # Copy the model to each device
-        device_map = {"": local_rank}
-    else:
-        device_map = None
-        quantization_config = None
-
     # Model must be loaded after create `TrainingArguments`!!!
     model = AutoModelForSequenceClassification.from_pretrained(
         script_args.model_name,
-        quantization_config=quantization_config,
-        device_map=device_map,
-        trust_remote_code=script_args.trust_remote_code,
         num_labels=1,
     )
     model.config.pad_token_id = 0
-
-    # Define the LoraConfig
-    if script_args.use_peft:
-        peft_config = LoraConfig(
-            r=16,
-            lora_alpha=16,
-            bias="none",
-            task_type="SEQ_CLS",
-            modules_to_save=["scores"],
-        )
-        model = get_peft_model(model, peft_config)
-        model.print_trainable_parameters()
 
     # Define the Trainer
     model.config.use_cache = False
@@ -442,35 +390,8 @@ def main():
         )
     )
 
-    # Detecting last checkpoint.
-    last_checkpoint = None
-    if (
-        os.path.isdir(training_args.output_dir)
-        and training_args.do_train
-        and not training_args.overwrite_output_dir
-    ):
-        last_checkpoint = get_last_checkpoint(training_args.output_dir)
-        if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
-            raise ValueError(
-                f"Output directory ({training_args.output_dir}) already exists and is not empty. "
-                "Use --overwrite_output_dir to overcome."
-            )
-        elif (
-            last_checkpoint is not None and training_args.resume_from_checkpoint is None
-        ):
-            logger.info(
-                f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
-                "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
-            )
-
-    # Load from checkpoint
-    checkpoint = None
-    if training_args.resume_from_checkpoint is not None:
-        checkpoint = training_args.resume_from_checkpoint
-    elif last_checkpoint is not None:
-        checkpoint = last_checkpoint
     # Training
-    trainer.train(resume_from_checkpoint=checkpoint)
+    trainer.train()
     # Saving
     trainer.save_model(training_args.output_dir)
     print_rank_0(

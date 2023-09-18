@@ -58,9 +58,5 @@ torchrun --nproc_per_node $gpus --master-port 29600 \
     --max_length $cutoff_len \
     --gradient_accumulation_steps 1 \
     --gradient_checkpointing False \
-    --load_in_8bit False \
-    --load_in_4bit False \
-    --use_peft False \
-    --trust_remote_code True \
     --output_dir $output_dir \
     --use_llama False
